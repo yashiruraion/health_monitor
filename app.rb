@@ -1,16 +1,8 @@
 require 'net/http'
 
-class App
-  def initialize(url)
-    @uri = URI(url)
-  end
-
-  def host
-    @uri.host
-  end
-
-  def port
-    @uri.port
+class Url
+  def initialize(address)
+    @uri = URI(address)
   end
 
   def path
@@ -18,12 +10,22 @@ class App
     @uri.path
   end
 
+  def method_missing(name, *args, &block)
+    @uri.send(name, *args, &block)
+  end
+end
+
+class App
+  def initialize(url)
+    @url = url
+  end
+
   def start
-    req = Net::HTTP.new(host, port)
+    req = Net::HTTP.new(@url.host, @url.port)
     req.open_timeout = 5
 
     loop do
-      res = req.get path
+      res = req.get @url.path
       if res.code == '200'
         puts 'healthy'
       else
@@ -41,7 +43,8 @@ class App
 end
 
 if ARGV.size == 1
-  App.new(ARGV[0]).start
+  url = Url.new(ARGV[0])
+  App.new(url).start
 else
   puts "ruby #{$0} [url]"
 end
