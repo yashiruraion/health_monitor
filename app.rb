@@ -10,6 +10,10 @@ class Url
     @uri.path
   end
 
+  def to_s
+    "#{scheme}://#{host}:#{port}#{path}"
+  end
+
   def method_missing(name, *args, &block)
     @uri.send(name, *args, &block)
   end
@@ -26,14 +30,10 @@ class App
 
     loop do
       res = req.get @url.path
-      if res.code == '200'
-        puts 'healthy'
-      else
-        puts 'not healthy'
-      end
+      puts "#{@url} -> #{res.code} #{res.message}"
       sleep 2
     rescue Errno::ECONNREFUSED
-      puts 'retrying...'
+      puts "#{@url} -> Connection refused"
       sleep 2
     end
 
