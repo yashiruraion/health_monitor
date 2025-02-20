@@ -1,34 +1,16 @@
 require 'net/http'
 
-class Url
-  def initialize(address)
-    @uri = URI(address)
-    raise NotValidUrl.new(address) unless @uri.kind_of?(URI::HTTP)
+module HealthMonitor
+  class UrlNotValid < StandardError
+    def initialize
+      super
+    end
   end
 
-  def path
-    return '/' if @uri.path.empty?
-    @uri.path
-  end
-
-  def to_s
-    "#{scheme}://#{host}:#{port}#{path}"
-  end
-
-  def method_missing(name, *args, &block)
-    @uri.send(name, *args, &block)
-  end
-end
-
-class NotValidUrl < StandardError
-  def initialize(address)
-    super("Url '#{address}' is not valid")
-  end
-end
-
-class MissingUrl < StandardError
-  def initialize
-    super('Url is missing')
+  class UrlNotFound < StandardError
+    def initialize
+      super
+    end
   end
 end
 
@@ -40,6 +22,7 @@ class App
 
   def start
     req = Net::HTTP.new(@url.host, @url.port)
+    req.use_ssl = true if @url.secure?
     req.open_timeout = 5
 
     loop do
@@ -56,20 +39,46 @@ class App
   end
 end
 
-class Arg
-  attr_reader :refresh_interval
+class Url
+  attr_reader :host, :port, :path
+
+  def initialize(host, port, path, secure=false)
+    @host = host
+    @port = port
+    @path = path
+    @secure = secure
+  end
+
+  def secure?
+    @secure
+  end
+
+  def to_s
+    scheme = secure? ? "https" : "http"
+    "#{scheme}://#{host}:#{port}#{path}"
+  end
+end
+
+class Config
+  attr_reader :url, :refresh_interval
 
   def initialize(argv)
     @argv = argv
+
+    @url = parse_url
     @refresh_interval = parse_refresh_interval
   end
 
-  def url
-    raise MissingUrl.new unless @argv[0]
-    Url.new(@argv[0])
+  private
+  def parse_url
+    raise HealthMonitor::UrlNotFound.new unless @argv[0]
+    uri = URI(@argv[0])
+    raise HealthMonitor::UrlNotValid.new unless uri.kind_of?(URI::HTTP)
+    path = uri.path.empty? ? '/' : uri.path
+    secure = uri.scheme == 'https'
+    Url.new(uri.host, uri.port, path, secure)
   end
 
-  private
   def parse_refresh_interval
     arg_index = @argv.find_index { |arg| arg.start_with?('--refresh_interval=') }
     return 2 unless arg_index
@@ -80,10 +89,9 @@ class Arg
   end
 end
 
-begin
-  arg = Arg.new(ARGV)
-  App.new(arg.url, arg.refresh_interval).start
-rescue => ex
-  puts "ERROR : #{ex.message}"
+if ARGV[0] == '--help'
   puts "ruby #{$0} [url] --refresh_interval=[refresh_interval]"
+else
+  config = Config.new(ARGV)
+  App.new(config.url, config.refresh_interval).start
 end
